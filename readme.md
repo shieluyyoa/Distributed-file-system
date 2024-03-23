@@ -11,7 +11,7 @@ Your source code will use a combination of C++14, gRPC, and Protocol Buffers to 
 You can clone the code in the Project 4 repository with the command:
 
 ```
-git clone https://github.gatech.edu/gios-spring-24/pr4.git
+git clone https://github.gatech.edu/gios-spr-24/pr4.git
 ```
 
 ## Submission Instructions
