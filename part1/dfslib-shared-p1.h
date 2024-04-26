@@ -20,6 +20,8 @@
 // Add your additional code here
 //
 
+int GetFileSize(std::string filename);
+
 
 #endif
 

@@ -17,7 +17,7 @@ private:
 
     /** The pointer to the grpc server instance **/
     std::unique_ptr<grpc::Server> server;
-
+    
     /** Server callback **/
     std::function<void()> grader_callback;
 

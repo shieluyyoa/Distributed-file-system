@@ -141,7 +141,10 @@ public:
     //
     // You may add any additional declarations of methods or variables that you need here.
     //
-
+    std::set<std::string> GetLocalFileList();
+private:
+    // mutex for inotify watcher and async callback
+    std::mutex file_directory_mutex;
 
 };
 #endif

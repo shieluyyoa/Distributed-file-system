@@ -23,3 +23,10 @@ dfs_log_level_e DFS_LOG_LEVEL = LL_ERROR;
 // Just be aware they are always submitted, so they should
 // be compilable.
 //
+
+int GetFileSize(std::string filename)
+{
+    struct stat stat_buf;
+    int rc = stat(filename.c_str(), &stat_buf);
+    return rc == 0 ? stat_buf.st_size : -1;
+}

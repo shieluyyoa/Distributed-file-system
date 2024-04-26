@@ -2,6 +2,8 @@
 #define PR4_DFSLIB_SHARED_H
 
 #include <algorithm>
+#include <set>
+#include <dirent.h>
 #include <cctype>
 #include <locale>
 #include <cstddef>
@@ -55,6 +57,8 @@ struct EventStruct {
 //
 // Add any additional shared code here
 //
+
+int GetFileSize(std::string filename);
 
 
 #endif

@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <regex>
 #include <vector>
 #include <string>
@@ -20,12 +21,24 @@
 #include "dfslib-clientnode-p1.h"
 #include "proto-src/dfs-service.grpc.pb.h"
 
-using grpc::Status;
 using grpc::Channel;
-using grpc::StatusCode;
-using grpc::ClientWriter;
-using grpc::ClientReader;
 using grpc::ClientContext;
+using grpc::ClientReader;
+using grpc::ClientWriter;
+using grpc::Status;
+using grpc::StatusCode;
+
+using dfs_service::Chunk;
+using dfs_service::DFSService;
+using dfs_service::Empty;
+using dfs_service::FileDetails;
+using dfs_service::FileList;
+using dfs_service::FileRequest;
+using dfs_service::StoreRequest;
+
+using std::chrono::milliseconds;
+using std::chrono::system_clock;
+using namespace std;
 
 //
 // STUDENT INSTRUCTION:
@@ -39,12 +52,12 @@ using grpc::ClientContext;
 //      using dfs_service::MyMethod
 //
 
-
 DFSClientNodeP1::DFSClientNodeP1() : DFSClientNode() {}
 
 DFSClientNodeP1::~DFSClientNodeP1() noexcept {}
 
-StatusCode DFSClientNodeP1::Store(const std::string &filename) {
+StatusCode DFSClientNodeP1::Store(const std::string &filename)
+{
 
     //
     // STUDENT INSTRUCTION:
@@ -63,10 +76,65 @@ StatusCode DFSClientNodeP1::Store(const std::string &filename) {
     // StatusCode::NOT_FOUND - if the file cannot be found on the client
     // StatusCode::CANCELLED otherwise
     //
+    dfs_log(LL_DEBUG) << "Storing File : " << filename;
+    ClientContext context;
+    StoreRequest store_request;
+    Empty empty;
+
+    context.set_deadline(std::chrono::system_clock::now() +
+                         std::chrono::milliseconds(deadline_timeout));
+
+    const string filepath = WrapPath(filename);
+    store_request.set_filename(filename);
+
+    std::unique_ptr<ClientWriter<StoreRequest>> writer(service_stub->StoreFile(&context, &empty));
+    ifstream file(filepath);
+
+    int file_size = GetFileSize(filepath);
+    if (file_size < 0)
+    {
+        dfs_log(LL_ERROR) << "File not found: " << filepath;
+        return StatusCode::NOT_FOUND;
+    }
+
+    int bytes_sent = 0;
+
+    dfs_log(LL_DEBUG) << "File size: " << file_size;
+
+    try
+    {
+        while (bytes_sent < file_size)
+        {
+            dfs_log(LL_DEBUG) << "Bytes sent: " << bytes_sent;
+            char buffer[DFS_BUFFERSIZE];
+            int bytes_ready = min(file_size - bytes_sent, DFS_BUFFERSIZE);
+            file.read(buffer, bytes_ready);
+            store_request.set_chunk(buffer, bytes_ready);
+            writer->Write(store_request);
+            bytes_sent += file.gcount();
+        }
+
+        file.close();
+    }
+    catch (std::exception &e)
+    {
+        dfs_log(LL_ERROR) << "Exception: " << e.what();
+        return StatusCode::CANCELLED;
+    }
+
+    dfs_log(LL_DEBUG) << "Total Bytes sent: " << bytes_sent;
+    writer->WritesDone();
+    Status status = writer->Finish();
+    if (status.ok())
+    {
+        return StatusCode::OK;
+    }
+
+    return status.error_code();
 }
 
-
-StatusCode DFSClientNodeP1::Fetch(const std::string &filename) {
+StatusCode DFSClientNodeP1::Fetch(const std::string &filename)
+{
 
     //
     // STUDENT INSTRUCTION:
@@ -87,9 +155,41 @@ StatusCode DFSClientNodeP1::Fetch(const std::string &filename) {
     // StatusCode::CANCELLED otherwise
     //
     //
+    dfs_log(LL_DEBUG) << "Fetching File : " << filename;
+    ClientContext context;
+    FileRequest file_request;
+    Chunk chunk;
+    string file_path = WrapPath(filename);
+
+    context.set_deadline(std::chrono::system_clock::now() +
+                         std::chrono::milliseconds(deadline_timeout));
+
+    file_request.set_filename(filename);
+    std::unique_ptr<ClientReader<Chunk>> reader(service_stub->FetchFile(&context, file_request));
+
+    ofstream out(file_path);
+
+    while (reader->Read(&chunk))
+    {
+        dfs_log(LL_DEBUG) << "Bytes received: " << chunk.chunk().length();
+
+        out << chunk.chunk();
+    }
+
+    out.close();
+
+    Status status = reader->Finish();
+
+    if (status.ok())
+    {
+        return StatusCode::OK;
+    }
+
+    return status.error_code();
 }
 
-StatusCode DFSClientNodeP1::Delete(const std::string& filename) {
+StatusCode DFSClientNodeP1::Delete(const std::string &filename)
+{
 
     //
     // STUDENT INSTRUCTION:
@@ -104,10 +204,27 @@ StatusCode DFSClientNodeP1::Delete(const std::string& filename) {
     // StatusCode::NOT_FOUND - if the file cannot be found on the server
     // StatusCode::CANCELLED otherwise
     //
+    dfs_log(LL_DEBUG) << "Deleting File : " << filename;
+    ClientContext context;
+    Empty empty;
+    FileRequest file_request;
 
+    context.set_deadline(std::chrono::system_clock::now() +
+                         std::chrono::milliseconds(deadline_timeout));
+
+    file_request.set_filename(filename);
+
+    Status status = service_stub->DeleteFile(&context, file_request, &empty);
+    if (status.ok())
+    {
+        return StatusCode::OK;
+    }
+
+    return status.error_code();
 }
 
-StatusCode DFSClientNodeP1::List(std::map<std::string,int>* file_map, bool display) {
+StatusCode DFSClientNodeP1::List(std::map<std::string, int> *file_map, bool display)
+{
 
     //
     // STUDENT INSTRUCTION:
@@ -128,9 +245,34 @@ StatusCode DFSClientNodeP1::List(std::map<std::string,int>* file_map, bool displ
     // StatusCode::CANCELLED otherwise
     //
     //
+
+    dfs_log(LL_DEBUG) << "Listing Files";
+    ClientContext context;
+    Empty empty;
+    FileList file_list;
+
+    context.set_deadline(std::chrono::system_clock::now() +
+                         std::chrono::milliseconds(deadline_timeout));
+
+    Status status = service_stub->ListFile(&context, empty, &file_list);
+    if (status.ok())
+    {
+        for (const auto &stat : file_list.file_status())
+        {
+            file_map->insert(pair<string, int>(stat.first, stat.second));
+            if (display)
+            {
+                dfs_log(LL_DEBUG) << "File: " << stat.first << " Mtime: " << stat.second;
+            }
+        }
+        return StatusCode::OK;
+    }
+
+    return status.error_code();
 }
 
-StatusCode DFSClientNodeP1::Stat(const std::string &filename, void* file_status) {
+StatusCode DFSClientNodeP1::Stat(const std::string &filename, void *file_status)
+{
 
     //
     // STUDENT INSTRUCTION:
@@ -154,6 +296,28 @@ StatusCode DFSClientNodeP1::Stat(const std::string &filename, void* file_status)
     // StatusCode::CANCELLED otherwise
     //
     //
+
+    dfs_log(LL_DEBUG) << "Getting File Status";
+    ClientContext context;
+    FileRequest file_request;
+    FileDetails file_details;
+
+    context.set_deadline(std::chrono::system_clock::now() +
+                         std::chrono::milliseconds(deadline_timeout));
+
+    file_request.set_filename(filename);
+
+    Status status = service_stub->FileStat(&context, file_request, &file_details);
+
+    if (status.ok())
+    {
+        dfs_log(LL_DEBUG) << "File: " << file_details.size() << " Mtime: " << file_details.mtime();
+        return StatusCode::OK;
+    }
+
+    file_status = &file_details;
+
+    return status.error_code();
 }
 
 //
@@ -162,5 +326,3 @@ StatusCode DFSClientNodeP1::Stat(const std::string &filename, void* file_status)
 // Add your additional code here, including
 // implementations of your client methods
 //
-
-

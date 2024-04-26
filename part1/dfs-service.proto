@@ -2,24 +2,56 @@ syntax = "proto3";
 
 package dfs_service;
 
+// import "google/protobuf/empty.proto";
+
 service DFSService {
 
     // Add your service calls here
 
     // 1. REQUIRED (Parts 1 & 2): A method to store files on the server
+    rpc StoreFile(stream StoreRequest) returns(Empty);
 
     // 2. REQUIRED (Parts 1 & 2): A method to fetch files from the server
+    rpc FetchFile(FileRequest) returns(stream Chunk);
 
     // 3. REQUIRED (Parts 1 & 2): A method to delete files from the server
-
+    rpc DeleteFile(FileRequest) returns(Empty);
     // 4. REQUIRED (Parts 1 & 2): A method to list all files on the server
-
+    rpc ListFile(Empty) returns(FileList);
     // 5. REQUIRED (Parts 1 & 2): A method to get the status of a file on the server
-
+    rpc FileStat(FileRequest) returns(FileDetails);
     // 7. Any other methods you deem necessary to complete the tasks of this assignment
-
+    
 
 }
 
 // Add your message types here
+message Empty {
+
+}
+
+
+message StoreRequest {
+    bytes chunk = 1;
+    string filename = 2;
+}
+
+message Chunk {
+    bytes chunk = 1;
+}
+
+message FileRequest  {
+    string filename = 1;
+}
+
+message FileDetails {
+    uint64 size = 1;
+    uint64 mtime = 2;
+    uint64 ctime = 3;
+}
+
+message FileList {
+    map<string,uint64> file_status = 1;
+}
+
 

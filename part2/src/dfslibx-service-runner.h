@@ -30,19 +30,19 @@
  * The QueueRequest is a container for managing the asynchronous callbacks
  */
 template <typename RequestT, typename ResponseT>
-struct QueueRequest {
-    grpc::ServerContext* context;
-    RequestT* request;
-    grpc::ServerAsyncResponseWriter<ResponseT>* response;
-    grpc::ServerCompletionQueue* cq;
-    void* tag;
+struct QueueRequest
+{
+    grpc::ServerContext *context;
+    RequestT *request;
+    grpc::ServerAsyncResponseWriter<ResponseT> *response;
+    grpc::ServerCompletionQueue *cq;
+    void *tag;
     bool finished;
-    QueueRequest(grpc::ServerContext* context,
-                 RequestT* request,
-                 grpc::ServerAsyncResponseWriter<ResponseT>* response,
-                 grpc::ServerCompletionQueue* cq,
-                 void* tag) :
-        context(context), request(request), response(response), cq(cq), tag(tag), finished(false) {}
+    QueueRequest(grpc::ServerContext *context,
+                 RequestT *request,
+                 grpc::ServerAsyncResponseWriter<ResponseT> *response,
+                 grpc::ServerCompletionQueue *cq,
+                 void *tag) : context(context), request(request), response(response), cq(cq), tag(tag), finished(false) {}
 };
 
 /**
@@ -55,18 +55,20 @@ struct QueueRequest {
  * @param cq
  */
 template <typename RequestT, typename ResponseT>
-static void HandleAsyncRPC(dfs_service::DFSService::AsyncService* service,
-                           DFSCallDataManager<RequestT, ResponseT>* manager,
-                           std::shared_ptr<grpc::ServerCompletionQueue> cq) {
+static void HandleAsyncRPC(dfs_service::DFSService::AsyncService *service,
+                           DFSCallDataManager<RequestT, ResponseT> *manager,
+                           std::shared_ptr<grpc::ServerCompletionQueue> cq)
+{
 
     // Spawn a new CallData instance to serve new clients.
     new DFSCallData<RequestT, ResponseT>(service, manager, cq.get());
 
-    void* tag;  // uniquely identifies a request.
+    void *tag; // uniquely identifies a request.
 
     bool ok;
 
-    while (true) {
+    while (true)
+    {
 
         // Block waiting to read the next event from the completion queue. The
         // event is uniquely identified by its tag, which in this case is the
@@ -76,11 +78,12 @@ static void HandleAsyncRPC(dfs_service::DFSService::AsyncService* service,
         // GPR_ASSERT(cq->Next(&tag, &ok));
         // GPR_ASSERT(ok);
         dfs_log(LL_DEBUG3) << "HandleAsyncRPC[Next]";
-        if (!cq->Next(&tag, &ok) || !ok) {
+        if (!cq->Next(&tag, &ok) || !ok)
+        {
             dfs_log(LL_ERROR) << "HandleAsyncRPC failed to get an ok from completion queue. Did the client crash?";
             continue;
         }
-        static_cast<DFSCallData<RequestT, ResponseT>*>(tag)->Proceed();
+        static_cast<DFSCallData<RequestT, ResponseT> *>(tag)->Proceed();
     }
 }
 
@@ -92,7 +95,8 @@ static void HandleAsyncRPC(dfs_service::DFSService::AsyncService* service,
  * @param server
  */
 template <typename RequestT, typename ResponseT>
-static void HandleSyncRPC(std::shared_ptr<grpc::Server> server) {
+static void HandleSyncRPC(std::shared_ptr<grpc::Server> server)
+{
     server->Wait();
 }
 
@@ -106,12 +110,11 @@ static void HandleSyncRPC(std::shared_ptr<grpc::Server> server) {
  * @tparam ResponseT
  */
 template <typename RequestT, typename ResponseT>
-class DFSServiceRunner {
+class DFSServiceRunner
+{
 
 private:
-
 protected:
-
     /** The server address **/
     std::string server_address;
 
@@ -119,7 +122,7 @@ protected:
     int num_async_threads;
 
     /** The grpc service object **/
-    grpc::Service* service;
+    grpc::Service *service;
 
     /** The server instance **/
     std::shared_ptr<grpc::Server> server;
@@ -132,34 +135,40 @@ protected:
 
     /** Queued requests callback **/
     std::function<void()> queued_requests_callback;
-public:
 
+public:
     DFSServiceRunner() {}
 
-    void SetService(grpc::Service* service) {
+    void SetService(grpc::Service *service)
+    {
         this->service = service;
     }
 
-    void SetQueuedRequestsCallback(std::function<void()> queued_requests_callback) {
+    void SetQueuedRequestsCallback(std::function<void()> queued_requests_callback)
+    {
         this->queued_requests_callback = queued_requests_callback;
     }
 
-    void SetAddress(const std::string& server_address) {
+    void SetAddress(const std::string &server_address)
+    {
         this->server_address = server_address;
     }
 
-    void SetNumThreads(int num_async_threads) {
+    void SetNumThreads(int num_async_threads)
+    {
         this->num_async_threads = num_async_threads;
     }
 
-    void Shutdown() noexcept {
+    void Shutdown() noexcept
+    {
         this->server->Shutdown();
     }
 
     /**
      * Run the service
      */
-    void Run() {
+    void Run()
+    {
         grpc::ServerBuilder builder;
         builder.AddListeningPort(this->server_address, grpc::InsecureServerCredentials());
         builder.RegisterService(this->service);
@@ -167,10 +176,11 @@ public:
         this->server = builder.BuildAndStart();
         dfs_log(LL_SYSINFO) << "DFSServerNode server listening on " << this->server_address;
 
-        std::vector <std::thread> threads;
+        std::vector<std::thread> threads;
 
         // Send async methods to separate threads
-        for (int i = this->num_async_threads; i > 0; i--) {
+        for (int i = this->num_async_threads; i > 0; i--)
+        {
             std::thread thread_async(HandleAsyncRPC<RequestT, ResponseT>,
                                      &this->async_service,
                                      dynamic_cast<DFSCallDataManager<RequestT, ResponseT> *>(this->service),
@@ -181,20 +191,24 @@ public:
 
         // Start the synchronous server on a separate thread
         std::thread thread_server(HandleSyncRPC<RequestT, ResponseT>, this->server);
-        dfs_log(LL_SYSINFO) << "Server thread " << " started";
+        dfs_log(LL_SYSINFO) << "Server thread "
+                            << " started";
         threads.push_back(std::move(thread_server));
 
         // Start the queue processor
         std::thread thread_queue(queued_requests_callback);
-        dfs_log(LL_SYSINFO) << "Queue thread " << " started";
+        dfs_log(LL_SYSINFO) << "Queue thread "
+                            << " started";
         threads.push_back(std::move(thread_queue));
 
-        for (std::thread &t : threads) {
-            if (t.joinable()) { t.join(); }
+        for (std::thread &t : threads)
+        {
+            if (t.joinable())
+            {
+                t.join();
+            }
         }
-
     }
-
 };
 
-#endif //PR4_DFS_SERVICE_RUNNER_H
+#endif // PR4_DFS_SERVICE_RUNNER_H
